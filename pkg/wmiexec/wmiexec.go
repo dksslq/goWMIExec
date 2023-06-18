@@ -44,11 +44,10 @@ func GetNetworkBindings(target string) (ret []string, err error) {
 	if err != nil {
 		return nil, err
 	}
-	err = tcpClient.SetReadDeadline(time.Now().Add(time.Duration(Timeout) * time.Second))
-	if err != nil {
+	defer tcpClient.Close()
+	if err = tcpClient.SetDeadline(time.Now().Add(time.Duration(Timeout) * time.Second)); err != nil {
 		return nil, err
 	}
-	defer tcpClient.Close()
 
 	//Hello, please are you ok to connect?
 	//we seem to be using the iobjectexporter abstract syntax... whatever that means?
@@ -78,8 +77,12 @@ func GetNetworkBindings(target string) (ret []string, err error) {
 
 	recv := make([]byte, 2048)
 
-	tcpClient.Write(packetRPC.Bytes())
-	tcpClient.Read(recv)
+	if _, err = tcpClient.Write(packetRPC.Bytes()); err != nil {
+		return nil, err
+	}
+	if _, err = tcpClient.Read(recv); err != nil {
+		return nil, err
+	}
 	recvHdr := rpce.CommonHead{}
 
 	binary.Read(bytes.NewReader(recv), binary.LittleEndian, &recvHdr)
@@ -90,9 +93,13 @@ func GetNetworkBindings(target string) (ret []string, err error) {
 
 	//cool, can we auth?
 	packetRPCReq := rpce.NewRequestReq(2, 0, 5, nil, nil)
-	tcpClient.Write(packetRPCReq.Bytes())
+	if _, err = tcpClient.Write(packetRPCReq.Bytes()); err != nil {
+		return nil, err
+	}
 
-	tcpClient.Read(recv)
+	if _, err = tcpClient.Read(recv); err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -222,8 +229,7 @@ func (e *wmiExecer) Auth() error {
 		return err
 	}
 	defer e.tcpClient.Close()
-	err = e.tcpClient.SetReadDeadline(time.Now().Add(time.Duration(Timeout) * time.Second))
-	if err != nil {
+	if err = e.tcpClient.SetDeadline(time.Now().Add(time.Duration(Timeout) * time.Second)); err != nil {
 		return err
 	}
 	//ey, can I please talk to SCM? I will use NTLM SSP to auth..
@@ -252,9 +258,13 @@ func (e *wmiExecer) Auth() error {
 
 	packetRPC := rpce.NewBindReq(3, ctxList, &auth)
 	recv := make([]byte, 2048)
-	e.tcpClient.Write(packetRPC.Bytes())
+	if _, err = e.tcpClient.Write(packetRPC.Bytes()); err != nil {
+		return err
+	}
 
-	e.tcpClient.Read(recv)
+	if _, err = e.tcpClient.Read(recv); err != nil {
+		return err
+	}
 
 	//should probably check here that it's not an error
 	bindAck := rpce.ParseBindAck(recv)
@@ -283,7 +293,9 @@ func (e *wmiExecer) Auth() error {
 
 	packetAuth := rpce.NewAuth3Req(3, rpce.RPC_C_AUTHN_LEVEL_CONNECT, sspResp)
 	prepBytes2 := packetAuth.Bytes()
-	e.tcpClient.Write(prepBytes2)
+	if _, err = e.tcpClient.Write(prepBytes2); err != nil {
+		return err
+	}
 
 	cause_id_bytes := [16]byte{}
 	rand.Seed(time.Now().UnixNano())
@@ -295,8 +307,12 @@ func (e *wmiExecer) Auth() error {
 	//fmt.Println(pp)
 	prepBytes3 := p.Bytes()
 	recv3 := make([]byte, 2048)
-	e.tcpClient.Write(prepBytes3)
-	e.tcpClient.Read(recv3)
+	if _, err = e.tcpClient.Write(prepBytes3); err != nil {
+		return err
+	}
+	if _, err = e.tcpClient.Read(recv3); err != nil {
+		return err
+	}
 
 	if recv3[2] == 3 {
 		pf := rpce.ParseFault(recv3)
@@ -358,7 +374,7 @@ func (e *wmiExecer) RPCConnect() error {
 		e.log.Error("Error: ", err.Error())
 		return err
 	}
-	err = e.tcpClient.SetReadDeadline(time.Now().Add(time.Duration(Timeout) * time.Second))
+	err = e.tcpClient.SetDeadline(time.Now().Add(time.Duration(Timeout) * time.Second))
 	if err != nil {
 		return err
 	}
@@ -404,8 +420,12 @@ func (e *wmiExecer) RPCConnect() error {
 	bindPacket := rpce.NewBindReq(2, ctxList, &auth)
 
 	recv := make([]byte, 2048)
-	e.tcpClient.Write(bindPacket.Bytes())
-	e.tcpClient.Read(recv)
+	if _, err = e.tcpClient.Write(bindPacket.Bytes()); err != nil {
+		return err
+	}
+	if _, err = e.tcpClient.Read(recv); err != nil {
+		return err
+	}
 
 	rsp := rpce.ParseBindAck(recv)
 
@@ -434,7 +454,9 @@ func (e *wmiExecer) RPCConnect() error {
 	sspResp := ntlmssp.NewSSPAuthenticate(ntlmResp, domain, username, []byte(hostname), nil).Bytes()
 	packetAuth := rpce.NewAuth3Req(3, rpce.RPC_C_AUTHN_LEVEL_PKT, sspResp)
 
-	e.tcpClient.Write(packetAuth.Bytes())
+	if _, err = e.tcpClient.Write(packetAuth.Bytes()); err != nil {
+		return err
+	}
 
 	packetRemQ := NewPacketDCOMRemQueryInterface(e.causality, e.ipid, uuid.IID_IWbemLoginClientID[:])
 
@@ -450,9 +472,13 @@ func (e *wmiExecer) RPCConnect() error {
 
 	authv.AuthValue = messagesig.Bytes()
 	wmiClientSend := packetRPC.Bytes()
-	e.tcpClient.Write(wmiClientSend)
+	if _, err = e.tcpClient.Write(wmiClientSend); err != nil {
+		return err
+	}
 	recv3 := make([]byte, 2048)
-	e.tcpClient.Read(recv3)
+	if _, err = e.tcpClient.Read(recv3); err != nil {
+		return err
+	}
 
 	resp := rpce.ParseResponse(recv3)
 
@@ -526,9 +552,13 @@ func (e *wmiExecer) Exec(command string) error {
 				e.assGroup,
 				ctxList,
 				nil)
-			e.tcpClient.Write(packetRPC.Bytes())
+			if _, err = e.tcpClient.Write(packetRPC.Bytes()); err != nil {
+				return err
+			}
 			resp = make([]byte, 2048)
-			e.tcpClient.Read(resp)
+			if _, err = e.tcpClient.Read(resp); err != nil {
+				return err
+			}
 			e.stage = "Request"
 
 		case "Request":
@@ -748,7 +778,9 @@ func (e *wmiExecer) Exec(command string) error {
 			// e.log.Infof("writing stub data (call id %d): %x", callID, packetRPC.StubData[16:])
 			// e.log.Infof("Parsed stub data: %+v", parseStub(packetRPC.StubData[16:]))
 			// e.log.Infof("unknown portion: (%d) %x", len(parseStub(packetRPC.StubData[16:]).Unknown), parseStub(packetRPC.StubData[16:]).Unknown)
-			e.tcpClient.Write(wmiSend)
+			if _, err = e.tcpClient.Write(wmiSend); err != nil {
+				return err
+			}
 
 			//reads 16 bytes
 			hdr := rpce.Response{}
@@ -767,7 +799,9 @@ func (e *wmiExecer) Exec(command string) error {
 
 				if uint16(n) < hdr.CommonHead.FragLength {
 					buff := make([]byte, hdr.CommonHead.FragLength-uint16(n))
-					e.tcpClient.Read(buff)
+					if _, err = e.tcpClient.Read(buff); err != nil {
+						return err
+					}
 					resp = append(resp, buff...)
 				}
 			}
